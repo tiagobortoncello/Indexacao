@@ -2,62 +2,53 @@
 
 import streamlit as st
 import re
-from thesaurus_parser import parse_sth_file
+import json
 
-# Carregar o thesaurus (faz isso uma vez)
+# Carregar o mapeamento de termos autorizados
 @st.cache_data
-def carregar_thesaurus():
-    data = parse_sth_file('sth..txt')
-    # Criar um mapeamento de palavras para termos
-    word_to_terms = {}
-    for termo, info in data.items():
-        if info['situacao'] != 'Ativo':
-            continue
-        # Adiciona o termo principal
-        word_to_terms[termo.lower()] = info
-        # Adiciona "Usado por"
-        for sin in info.get('usado_por', []):
-            word_to_terms[sin.lower()] = info
-    return data, word_to_terms
+def carregar_mapeamento():
+    try:
+        with open('termos_autorizados.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        st.error("Arquivo `termos_autorizados.json` não encontrado. Execute `thesaurus_parser.py` primeiro.")
+        return {}
 
-st.title("🔍 Indexador Automático com Thesaurus")
+st.title("🔍 Indexador de Termos Autorizados")
 
 st.markdown("""
-> Cole um texto abaixo. O sistema vai sugerir **termos padronizados** do thesaurus.
+> Cole um texto abaixo. O sistema identifica termos e sugere **apenas as formas autorizadas** do thesaurus.
 """)
 
-# Carregar dados
-try:
-    thesaurus, word_map = carregar_thesaurus()
-    st.success(f"✅ Thesaurus carregado! {len(thesaurus)} termos ativos.")
-except Exception as e:
-    st.error(f"❌ Erro ao carregar o thesaurus: {e}")
+# Carregar mapeamento
+mapa = carregar_mapeamento()
+
+if not mapa:
     st.stop()
 
-# Campo de texto
-texto = st.text_area("Cole seu texto aqui:", height=200)
+st.success(f"✅ Base carregada! {len(mapa)} variações mapeadas para termos autorizados.")
 
-if st.button("Sugerir Termos"):
+# Campo de texto
+texto = st.text_area("Cole seu texto aqui:", height=200, key="input_text")
+
+if st.button("Sugerir Termos Autorizados"):
     if not texto.strip():
-        st.warning("Por favor, cole um texto.")
+        st.warning("Por favor, cole um texto para análise.")
     else:
         texto_lower = texto.lower()
-        encontrado = {}
+        encontrado = set()
 
-        for palavra, info in word_map.items():
-            if re.search(r'\b' + re.escape(palavra) + r'\b', texto_lower):
-                use = info['use']
-                if use not in encontrado:
-                    encontrado[use] = info
+        # Busca por correspondência exata de palavras
+        for variacao, termo_autorizado in mapa.items():
+            if re.search(r'\b' + re.escape(variacao) + r'\b', texto_lower):
+                encontrado.add(termo_autorizado)
 
         if encontrado:
-            st.markdown("### 🎯 Termos Sugeridos")
-            for termo, info in encontrado.items():
-                with st.expander(f"**{termo}**"):
-                    st.write(f"**Termo original:** {info.get('use', '')}")
-                    if info.get('definicao'):
-                        st.write(f"*{info['definicao']}*")
-                    if info.get('tg'):
-                        st.write(f"🔹 Geral: {info['tg']}")
+            st.markdown("### 🎯 Termos Autorizados Sugeridos")
+            for termo in sorted(encontrado):
+                st.markdown(f"- **{termo}**")
+            st.markdown("---")
+            st.markdown("### 📥 Termos para indexação (copia e cola)")
+            st.code(", ".join(sorted(encontrado)), language="text")
         else:
             st.info("Nenhum termo do thesaurus foi encontrado no texto.")
