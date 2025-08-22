@@ -67,8 +67,9 @@ def parse_sth_file(filepath):
 
 # Gera o mapeamento final
 if __name__ == '__main__':
-    mapping = parse_sth_file('sth..txt')
+    mapping = parse_sth_file('sth.txt')
     with open('termos_autorizados.json', 'w', encoding='utf-8') as f:
         json.dump(mapping, f, ensure_ascii=False, indent=2)
     print(f"✅ {len(mapping)} formas mapeadas para termos autorizados.")
     print("Arquivo salvo: termos_autorizados.json")
+
