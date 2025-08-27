@@ -1,71 +1,63 @@
 # thesaurus_parser.py
 def parse_sth_file(file_path):
     """
-    Faz o parsing do arquivo sth.txt e retorna um dicionário com os termos,
-    seus 'Use', 'Situação', 'Def.', 'Usado por', etc.
+    Lê o arquivo sth.txt e retorna:
+    - thesaurus: dicionário com todos os termos ativos
+    - word_map: mapeamento de palavras (sinônimos, variações) → termo padrão
     """
-    data = {}
-    current_term = None
-    current_info = {}
+    thesaurus = {}
+    word_map = {}
 
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+            content = f.read()
     except FileNotFoundError:
         raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
-    except Exception as e:
-        raise Exception(f"Erro ao ler o arquivo: {e}")
 
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith('#'):
+    # Dividir o conteúdo por blocos (cada termo)
+    blocks = content.strip().split('\n\n')
+    
+    for block in blocks:
+        lines = [line.strip() for line in block.split('\n') if line.strip() and not line.startswith('#')]
+        if not lines:
             continue
 
-        # Detecta início de novo termo (linhas sem "Use:", "Situação:", etc.)
-        if ':' not in line or not any(
-            line.startswith(prefix) for prefix in [
-                'Use:', 'Situação:', 'Def.:', 'TG:', 'TE:', 'TR:', 'Usado por:', 'NE:', 'NH:'
-            ]
-        ):
-            # Finaliza o termo anterior
-            if current_term:
-                data[current_term] = current_info
-            # Inicia novo termo
-            current_term = line
-            current_info = {
-                'use': None,
-                'situacao': 'Inativo',
-                'definicao': None,
-                'usado_por': [],
-                'tg': None,
-                'te': [],
-                'tr': []
-            }
-        elif line.startswith('Use:'):
-            current_info['use'] = line[len('Use:'):].strip()
-        elif line.startswith('Situação:'):
-            current_info['situacao'] = line[len('Situação:'):].strip()
-        elif line.startswith('Def.:'):
-            current_info['definicao'] = line[len('Def.:'):].strip()
-        elif line.startswith('Usado por:'):
-            usados = line[len('Usado por:'):].strip()
-            current_info['usado_por'].extend([u.strip() for u in usados.split(',') if u.strip()])
-        elif line.startswith('TG:'):
-            current_info['tg'] = line[len('TG:'):].strip()
-        elif line.startswith('TE:'):
-            te = line[len('TE:'):].strip()
-            if te:
-                current_info['te'].append(te)
-        elif line.startswith('TR:'):
-            tr = line[len('TR:'):].strip()
-            if tr:
-                current_info['tr'].append(tr)
-        elif line.startswith('NE:') or line.startswith('NH:'):
-            # Ignorar por enquanto ou armazenar se necessário
-            pass
+        term = None
+        use = None
+        situacao = "Inativo"
+        usado_por = []
 
-    # Adiciona o último termo
-    if current_term and current_info:
-        data[current_term] = current_info
+        for line in lines:
+            if not term and ':' not in line:
+                term = line
+            elif line.startswith('Use:'):
+                use = line[len('Use:'):].strip()
+            elif line.startswith('Situação:'):
+                situacao = line[len('Situação:'):].strip()
+            elif line.startswith('Usado por:'):
+                sin_list = line[len('Usado por:'):].strip()
+                usado_por = [s.strip() for s in sin_list.split(',') if s.strip()]
 
-    return data
+        # Só considera se estiver Ativo
+        if situacao != 'Ativo':
+            continue
+
+        # O termo principal
+        termo_padrao = use or term
+
+        if not termo_padrao:
+            continue
+
+        # Adiciona o termo principal
+        thesaurus[term] = termo_padrao
+        word_map[term.lower()] = termo_padrao
+
+        # Adiciona o "Use" como variação
+        if use:
+            word_map[use.lower()] = termo_padrao
+
+        # Adiciona os "Usado por"
+        for sin in usado_por:
+            word_map[sin.lower()] = termo_padrao
+
+    return thesaurus, word_map
