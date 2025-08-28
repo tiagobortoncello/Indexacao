@@ -1,63 +1,81 @@
 # thesaurus_parser.py
+import re
+
 def parse_sth_file(file_path):
     """
-    Lê o arquivo sth.txt e retorna:
-    - thesaurus: dicionário com todos os termos ativos
-    - word_map: mapeamento de palavras (sinônimos, variações) → termo padrão
+    Lê e corrige o arquivo sth.txt mal formatado.
+    Retorna:
+    - thesaurus: dicionário com termos ativos
+    - word_map: mapeia sinônimos → termo padrão
     """
-    thesaurus = {}
-    word_map = {}
-
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
     except FileNotFoundError:
         raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
 
-    # Dividir o conteúdo por blocos (cada termo)
-    blocks = content.strip().split('\n\n')
-    
+    # Substitui quebras de linha erradas e normaliza
+    content = re.sub(r'\n+', '\n', content)  # Remove múltiplas quebras
+    content = re.sub(r'\s+', ' ', content)  # Normaliza espaços
+    content = content.replace('Situação: Ativo', '\nSituação: Ativo')
+    content = content.replace('Situação: Inativo', '\nSituação: Inativo')
+
+    # Divide por blocos (onde há "Situação: Ativo" ou "Situação: Inativo")
+    blocks = []
+    current = ""
+    for line in content.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        if 'Situação: ' in line:
+            if current:
+                blocks.append(current + " " + line)
+            else:
+                blocks.append(line)
+            current = ""
+        else:
+            if not current:
+                current = line
+            else:
+                current += " " + line
+
+    if current:
+        blocks.append(current)
+
+    thesaurus = {}
+    word_map = {}
+
     for block in blocks:
-        lines = [line.strip() for line in block.split('\n') if line.strip() and not line.startswith('#')]
-        if not lines:
+        block = block.strip()
+        if not block or 'Situação: Inativo' in block:
             continue
 
-        term = None
-        use = None
-        situacao = "Inativo"
-        usado_por = []
-
-        for line in lines:
-            if not term and ':' not in line:
-                term = line
-            elif line.startswith('Use:'):
-                use = line[len('Use:'):].strip()
-            elif line.startswith('Situação:'):
-                situacao = line[len('Situação:'):].strip()
-            elif line.startswith('Usado por:'):
-                sin_list = line[len('Usado por:'):].strip()
-                usado_por = [s.strip() for s in sin_list.split(',') if s.strip()]
-
-        # Só considera se estiver Ativo
-        if situacao != 'Ativo':
+        # Extrair campos
+        term_match = re.match(r'^([^U][^S][^T][^N][^H][^D][^A][^C][^E][^F][^G][^L][^M][^O][^P][^Q][^R][^I][^J][^K][^X][^Y][^Z][^W][^0-9][^ ]+)', block)
+        if not term_match:
             continue
 
-        # O termo principal
+        term = term_match.group(1).strip()
+
+        use_match = re.search(r'Use:\s*([^S][^I][^T][^U][^A][^C][^A][^O][^:]+?)(?:\s+[A-Z]+:|$)', block)
+        use = use_match.group(1).strip() if use_match else None
+
+        usado_por_match = re.search(r'Usado por:\s*([^N][^E][^:]+?)(?:\s+[A-Z]+:|$)', block)
+        usado_por = [s.strip() for s in usado_por_match.group(1).split(',')] if usado_por_match else []
+
+        # Só se for Ativo
+        if 'Situação: Ativo' not in block:
+            continue
+
         termo_padrao = use or term
 
-        if not termo_padrao:
-            continue
-
-        # Adiciona o termo principal
-        thesaurus[term] = termo_padrao
+        # Mapear termo principal
         word_map[term.lower()] = termo_padrao
-
-        # Adiciona o "Use" como variação
         if use:
             word_map[use.lower()] = termo_padrao
-
-        # Adiciona os "Usado por"
         for sin in usado_por:
             word_map[sin.lower()] = termo_padrao
+
+        thesaurus[term] = termo_padrao
 
     return thesaurus, word_map
